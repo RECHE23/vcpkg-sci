@@ -1,0 +1,48 @@
+name: Bump ports
+on:
+  schedule:
+    - cron: "0 7 * * *"        # daily ~07:00 UTC (offset from homebrew-sci's 06:00)
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Open a PR for any port behind its upstream latest release
+        run: |
+          set -euo pipefail
+          vcpkg="${VCPKG_INSTALLATION_ROOT:?}/vcpkg"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          for d in ports/*/; do
+            name=$(basename "$d")
+            repo=$(sed -nE 's/.*REPO[[:space:]]+([^[:space:]]+).*/\1/p' "$d/portfile.cmake" | head -1)
+            cur=$(sed -nE 's/.*"version"[[:space:]]*:[[:space:]]*"([0-9.]+)".*/\1/p' "$d/vcpkg.json" | head -1)
+            latest=$(gh api "repos/$repo/releases/latest" -q .tag_name | sed 's/^v//')
+            [ "$latest" = "$cur" ] && { echo "$name up to date ($cur)"; continue; }
+            [ "$(printf '%s\n%s\n' "$cur" "$latest" | sort -V | tail -1)" = "$latest" ] || { echo "$name: $latest <= $cur, skip"; continue; }
+            branch="bump/$name-$latest"
+            git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1 && { echo "$branch exists, skip"; continue; }
+            sha=$(curl -fsSL "https://github.com/$repo/archive/refs/tags/v$latest.tar.gz" | sha512sum | awk '{print $1}')
+            git switch -c "$branch"
+            sed -i -E "s/(\"version\"[[:space:]]*:[[:space:]]*)\"[0-9.]+\"/\1\"$latest\"/" "$d/vcpkg.json"
+            sed -i -E "s/(SHA512[[:space:]]+)[0-9a-f]{128}/\1$sha/" "$d/portfile.cmake"
+            "$vcpkg" format-manifest "$d/vcpkg.json"
+            # self-validate BEFORE proposing (the PR won't trigger CI — GITHUB_TOKEN loop-guard)
+            "$vcpkg" install "$name" --overlay-ports="$PWD/ports" --triplet x64-linux
+            git add "$d" && git commit -m "$name $latest"
+            # register the new version (reads the committed port git-tree)
+            "$vcpkg" --x-builtin-ports-root="$PWD/ports" --x-builtin-registry-versions-dir="$PWD/versions" x-add-version "$name"
+            git add versions && git commit -m "version db: $name $latest"
+            git push -u origin "$branch"
+            gh pr create --base main --head "$branch" \
+              --title "$name $latest" \
+              --body "Automated bump of \`$name\` to v$latest (SHA512 from the tagged tarball; \`vcpkg install\` self-validated; version DB via x-add-version). Review and merge."
+          done

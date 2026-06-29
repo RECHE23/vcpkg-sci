@@ -1,0 +1,24 @@
+name: Port smoke
+on:
+  push:
+    branches: [main]
+    paths: ['ports/**', 'versions/**', '.github/workflows/ci.yml']
+  pull_request:
+    paths: ['ports/**', 'versions/**']
+  workflow_dispatch: {}
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: vcpkg install each port (overlay) — fails on a broken port
+        run: |
+          set -euo pipefail
+          vcpkg="${VCPKG_INSTALLATION_ROOT:?}/vcpkg"
+          for d in ports/*/; do
+            name=$(basename "$d")
+            echo "::group::install $name"
+            "$vcpkg" install "$name" --overlay-ports="$PWD/ports" --triplet x64-linux
+            echo "::endgroup::"
+          done
