@@ -2,7 +2,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO RECHE23/real-regex
     REF "v${VERSION}"
-    SHA512 0f383d151df0fc955fb871065670523d7abc3e16d68404e2b1199b13575cc4436ae0c7f5264b9e4dfac4a1bfc559adc6b42023bb9f3c51b41cc92bef45d20d0e
+    SHA512 cd5b4b138dd755d141db64c9c7d457e6bec2de7c2acc12156edd00f404a1e3fa3b2166ae417ff0a2a67ce2a0a9fd7afb9f5a7dd99078145e6c9b2ddeef2c4f1e
     HEAD_REF main
 )
 
